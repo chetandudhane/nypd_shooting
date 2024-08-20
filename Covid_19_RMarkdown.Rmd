@@ -1,0 +1,542 @@
+---
+title: "Covid-19 Data"
+date: "2024-08-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Covid-19 Data Analysis
+
+This is a R-Markdown to create a reproducible document of a short analysis of Covid-19 data
+
+### Data-set
+
+- We are going to use John Hopkins Covid 19 data
+- We ll use the links directly from github to import data
+- Link for the github <https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data/csse_covid_19_time_series>
+
+<br>
+<br>
+
+### 1. Import data
+<br>
+
+#### 1.1 Load tidyverse
+``` {r load_tidyverse, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+<br>
+
+#### 1.2. Create a vector of urls of data files, we need to import
+```{r dataUrl_vector, echo=TRUE, results='hide'}
+urls = c("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv","https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv","https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv","https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+
+```
+
+<br>
+
+#### 1.3. We have a vector of all data links
+``` {r urls, echo=TRUE}
+urls
+```
+<br>
+
+#### 1.4. Import data individually and read into a dataframe
+``` {r, results='hide', message=FALSE, warning=FALSE}
+confirmed_global = read_csv(urls[1])
+deaths_US = read_csv(urls[2])
+deaths_global = read_csv(urls[3])
+confirmed_US = read_csv(urls[4])
+```
+<br>
+
+#### 1.5. Show header of one of the data -> `confirmed_global`
+``` {r header_global, echo=TRUE}
+head(confirmed_global)
+```
+<br>
+<br>
+
+### 2. Data Cleaning - Global Data
+
+- We see that the data has columns like:
+  - Province/State
+  - Country/Region
+  - Lat (this is Latitude)
+  - Long (this is Longitude) and
+  - many columns with individual dates
+  
+- We need to tidy up the data
+- We'll use `pivot_longer`: 
+  - to collapse all the date columns into rows
+  - use value under those dates as 'deaths' or 'cases' of that row
+  
+- We'll use similar logic for all dataframes
+
+- Please note that the columns and column names may be different for each dataframe
+
+- Finally we choose the dataframe without Latitude,Longitude and all other columns that is not necessary for us.
+
+- We keep only the most basic identifier columns
+
+<br>
+
+#### 2.1 Tidying `deaths_global`
+``` {r tidy_deaths_global, echo=TRUE}
+
+deaths_global = deaths_global %>%
+  pivot_longer(cols = -c("Province/State", "Country/Region", "Lat", "Long"), 
+               names_to = "date",
+               values_to = "deaths") %>%
+select(-c("Lat", "Long"))
+head(deaths_global)
+```
+
+<br>
+
+#### 2.2 Tidying `confirmed_global`
+``` {r tidy_confirmed_global, echo=TRUE}
+confirmed_global = confirmed_global %>%
+  pivot_longer(cols = -c("Province/State", "Country/Region", "Lat", "Long"),
+               names_to = "date",
+               values_to = "cases") %>%
+select(-c("Lat", "Long"))
+head(confirmed_global)
+```
+
+<br>
+
+#### 2.3 Joining both Global Death and Global Cases dataframe
+``` {r join_global}
+global = confirmed_global %>%
+    full_join(deaths_global)
+```
+
+<br>
+
+#### 2.4 Renaming some column names to bring consistency in `global` dataframe
+``` {r echo=TRUE}
+global = global %>%
+  rename('Country_Region' = 'Country/Region',
+         'Province_State' = 'Province/State')
+```
+
+<br>
+
+#### 2.5 Date is `character` type. Changing to `date` type
+``` {r }
+library(lubridate)
+global$date = mdy(global$date)
+```
+<br>
+
+#### 2.6 Overview of the transformed dataframe `global`
+``` {r}
+summary(global)
+```
+<br>
+
+#### 2.7 Filter out data with zero cases
+``` {r}
+global = global %>%
+  filter(cases > 0)
+```  
+<br>
+
+#### 2.8 Check if maximum number in cases make sense
+``` {r}
+global %>% filter(cases>100000000)
+```  
+
+- The data shown is from Dec 2022
+- Hence, seems like a legitimate data  
+
+<br>
+
+### 3. Data Cleaning - US cases
+<br>
+
+#### 3.1 Tidying `deaths_US`
+``` {r tidy_deaths_US, echo=TRUE}
+
+deaths_US = deaths_US %>%
+  pivot_longer(cols = -c("Province_State", "Country_Region", "Lat", "Long_", "UID", "iso2", "iso3", "code3", "FIPS", "Admin2", "Combined_Key", "Population"), 
+               names_to = "date",
+               values_to = "deaths")
+
+deaths_US = deaths_US %>% 
+  select(Admin2:deaths) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat, Long_))
+```
+
+<br>
+
+#### 3.2 Tidying `confirmed_US`
+``` {r tidy_confirmed_US, echo=TRUE}
+confirmed_US = confirmed_US %>%
+  pivot_longer(cols = -c("Province_State", "Country_Region", "Lat", "Long_", "UID", "iso2", "iso3", "code3", "FIPS", "Admin2", "Combined_Key"), 
+               names_to = "date",
+               values_to = "cases") %>%
+select(-c("Lat", "Long_", "UID", "iso2", "iso3", "code3", "FIPS")) %>%
+  mutate(date = mdy(date))
+```
+
+<br>
+
+#### 3.3 Joining both the dataframes of US cases
+``` {r joint_US}
+US = confirmed_US %>%
+    full_join(deaths_US) %>%
+    select(-c("Admin2"))
+```
+
+<br>
+
+#### 3.4 Overview of the combined US cases
+``` {r}
+summary(US)
+```
+
+<br>
+
+#### 3.5 There are negative cases, this seems to be some error. So filtering out all rows with zero or less cases
+``` {r}
+US = US %>%
+  filter(cases>0)
+```
+<br>
+
+- Now the combined US data looks good
+
+### 4. Working together with `global` and `US` dataframes
+<br>
+
+#### 4.1 In `global` df, Introducing a new column `Combined_Key` - concatenating `Province_State` and `Country_Region`
+``` {r}
+global$Combined_Key = paste(global$Province_State, global$Country_Region, sep=", ")
+```
+
+<br>
+
+#### 4.2 Adding Population in global by accessing another data and combining with `global`
+``` {r, results='hide', message=FALSE, warning=FALSE}
+url = "https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv"
+lookup_table = read_csv(url)
+
+lookup_table = lookup_table %>%
+    select(-c("UID":"Admin2")) %>%
+    select(-c("Lat":"Combined_Key"))
+    
+global = global %>%
+left_join(lookup_table, by=c("Province_State", "Country_Region"))
+
+```
+
+<br>
+
+#### 4.3 Overview of both the consolidated and clean dataframes
+``` {r}
+summary(global)
+summary(US)
+```
+
+<br>
+
+## 5. Visualisations
+<br>
+
+#### 5.1 Trend lines of Covid-19 cases and deaths
+
+- Count is **log-scaled** to show the trend clearly
+<br>
+
+``` {r us_trend_lines, message=FALSE, warning=FALSE}
+ggplot(US, aes(x = date)) +
+  geom_line(aes(y = cases, color = "Cases")) +
+  geom_line(aes(y = deaths, color = "Deaths")) +
+  geom_smooth(aes(y = cases), method = "lm", se = FALSE, color = "green") +  # Add regression line for cases
+  geom_smooth(aes(y = deaths), method = "lm", se = FALSE, color = "red") +  # Add regression line for cases
+  labs(title = "Trend of COVID-19 Cases and Deaths in the US",
+       x = "Date",
+       y = "Count",
+       color = "Legend") +
+  scale_y_log10() +
+  theme_minimal()
+```
+<br>
+
+**- The green line is the modelled regression line for cases**
+- It indicates that worldwide cases of Covid-19 will keep on rising.
+
+<br>
+
+**- The red line is the modelled regression line for deaths**
+- It indicates that death-rate continue to show decline with respect to cases. i.e. Deaths are rising too but the rate is slowing down.
+
+<br>
+
+#### 5.2 Covid-19 cases and deaths worldwide - comparing Top-25 countries by cases
+
+``` {r global_comparision, message=FALSE, warning=FALSE }
+
+# Create a group of countries by its Total Cases and Total Deaths
+global_summary <- global %>%
+  group_by(Country_Region) %>%
+  summarize(total_cases = sum(cases), total_deaths = sum(deaths))
+
+# Order the dataframe by Total Cases in the descending order
+global_summary = global_summary %>%
+  arrange(desc(total_cases))
+
+# Keep only the Top 25 by Total Cases
+global_summary = global_summary %>%
+  slice_max(total_cases, n=25)
+
+# Plot the comparison
+ggplot(global_summary, aes(x = reorder(Country_Region, -total_cases), y = total_cases)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_bar(aes(y = total_deaths), stat = "identity", fill = "red", alpha = 0.5) +
+  labs(title = "Comparison of COVID-19 Cases and Deaths Worldwide",
+       x = "Country",
+       y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+<br>
+
+#### 5.3 Comparision of Covid-19 Deaths worldwide
+```{r global_deaths, message=FALSE, warning=FALSE}
+
+# Summarize the global dataframe by sum of cases and deaths
+global_summary <- global %>%
+  group_by(Country_Region) %>%
+  summarize(total_cases = sum(cases), total_deaths = sum(deaths))
+
+# Order the dataframe by Total Deaths in the descending order
+global_summary = global_summary %>%
+  arrange(desc(total_deaths))
+
+# Keep only the Top 25 by Total Cases
+global_summary = global_summary %>%
+  slice_max(total_deaths, n=25)
+
+
+# Plot bargraph of deaths of top 25 countries
+ggplot(global_summary, aes(x = reorder(Country_Region, -total_deaths), y = total_deaths)) +
+  #geom_bar(stat = "identity", fill = "steelblue") +
+  geom_bar(aes(y = total_deaths), stat = "identity", fill = "red", alpha = 0.5) +
+  labs(title = "Comparison of COVID-19 Deaths Worldwide",
+       x = "Country",
+       y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+<br>
+
+#### 5.4 Bar Graph of Cases and Deaths per Thousand of Population for All Countries
+
+
+``` {r global_death_per_thou, message=FALSE, warning=FALSE}
+
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Calculate cases and deaths per thousand of the population
+global_summary <- global %>%
+  mutate(cases_per_thousand = (cases / Population) * 1000,
+         deaths_per_thousand = (deaths / Population) * 1000)
+
+# Summarize the cases by 'cases per thousand'
+global_summary <- global_summary %>%
+  group_by(Country_Region) %>%
+  summarize(cases_per_thousand = sum(cases_per_thousand), deaths_per_thousand = sum(deaths_per_thousand))
+
+# Order the dataframe by Total Deaths in the descending order
+global_summary = global_summary %>%
+  arrange(desc(cases_per_thousand))
+
+# Keep only the Top 25 by Total Cases
+global_summary = global_summary %>%
+  slice_max(cases_per_thousand, n=25)
+
+# Create the bar graph
+ggplot(global_summary, aes(x = reorder(Country_Region, -cases_per_thousand))) +
+  geom_bar(aes(y = cases_per_thousand), stat = "identity", fill = "blue", alpha = 0.7) +
+  geom_bar(aes(y = deaths_per_thousand), stat = "identity", fill = "red", alpha = 0.7) +
+  labs(title = "COVID-19 Cases and Deaths per Thousand of Population",
+       x = "Country",
+       y = "Per Thousand",
+       fill = "Metric") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+<br>
+
+#### 5.5 Bar Graph of Deaths per Thousand of Population for All Countries
+
+```{r deaths_per_tho, warning=FALSE, message=FALSE}
+
+# Order the dataframe by Total Deaths in the descending order
+global_summary = global_summary %>%
+  arrange(desc(deaths_per_thousand))
+
+# Keep only the Top 25 by Total Cases
+global_summary = global_summary %>%
+  slice_max(deaths_per_thousand, n=25)
+
+# Create the bar graph
+ggplot(global_summary, aes(x = reorder(Country_Region, -deaths_per_thousand))) +
+  #geom_bar(aes(y = cases_per_thousand), stat = "identity", fill = "blue", alpha = 0.7) +
+  geom_bar(aes(y = deaths_per_thousand), stat = "identity", fill = "red", alpha = 0.7) +
+  labs(title = "COVID-19 Deaths per Thousand of Population",
+       x = "Country",
+       y = "Per Thousand",
+       fill = "Metric") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+#### 5.6 Mortality rate by country
+
+```{r mortality_rate, message=FALSE, warning=FALSE}
+
+# Summarize the global dataframe by sum of cases and deaths
+global_summary <- global %>%
+  group_by(Country_Region) %>%
+  summarize(total_cases = sum(cases), total_deaths = sum(deaths))
+
+# Morta;oty rate of each country
+global_summary <- global_summary %>%
+  mutate(mortality_rate = total_deaths / total_cases * 100)
+
+# Arrange by mortality rate in descending order
+global_summary = global_summary %>%
+  arrange(desc(mortality_rate))
+
+# Keep only the Top 25 by Total Cases
+global_summary = global_summary %>%
+  slice_max(mortality_rate, n=26) %>%
+  filter(mortality_rate < 600)
+
+# Plot the mortality rate
+ggplot(global_summary, aes(x = reorder(Country_Region, -mortality_rate), y = mortality_rate)) +
+  geom_bar(stat = "identity", fill = "darkred") +
+  labs(title = "COVID-19 Mortality Rate by Country",
+       x = "Country",
+       y = "Mortality Rate (%)") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+#### 5.7 Mortality rate for states in United States
+
+```{r trend_ny_ca, warning=FALSE, message=FALSE}
+
+# Summarize the US dataframe by sum of cases and deaths
+US_summary <- US %>%
+  group_by(Province_State) %>%
+  summarize(total_cases = sum(cases), total_deaths = sum(deaths))
+
+# Morta;oty rate of each country
+US_summary <- US_summary %>%
+  mutate(mortality_rate = total_deaths / total_cases * 100)
+
+# Arrange by mortality rate in descending order
+US_summary = US_summary %>%
+  arrange(desc(mortality_rate))
+
+# Keep only the Top 25 by Total Cases
+#US_summary = US_summary %>%
+ # slice_max(mortality_rate, n=2) %>%
+  #filter(mortality_rate < 600)
+
+# Plot the mortality rate
+ggplot(US_summary, aes(x = reorder(Province_State, -mortality_rate), y = mortality_rate)) +
+  geom_bar(stat = "identity", fill = "darkred") +
+  labs(title = "COVID-19 Mortality Rate by State in US",
+       x = "State",
+       y = "Mortality Rate (%)") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+<br>
+
+## Insight from Analysis and Visualisations
+
+<br>
+
+1. **CASES AND DEATHS** - from fig 5.2 and 5.3
+
+    1.1 Top 10 countries with maximum cases
+        - US, India, Brazil, France, Germany, United Kingdom, Russia, Italy, Turkey and South Korea
+        
+    1.2 Top 10 countries with maximum deaths
+        - US, Brazil, India, Mexico, Russia, Peru, UK, Italy, France and Columbia
+        
+    1.3 Insight - If we see countries like France, Germany, Turkey and South Korea managed to get a grip on their death toll inspite of having many cases
+
+<br>
+
+2. **CONSIDERING POPULATION DENSITY OF COUNTRY** - from fig 5.4 and 5.5
+
+    2.1 Top 10 countries with highest Cases-per-thousand population:
+        - France, UK, Australia, Neitherland, Denmark, Andorra, San Marino, New Zealand, Slovenia and Israel
+        
+    2.2 Top 10 countries with highest Deaths-per-thousand population
+        - UK, France, Neitherlands, Montenegro, San Merino, Czechia, Georgia, Slovakia, Slovenia and Lithuania
+        
+    2.3 INSIGHT - Considering the population density, we see that maximum per thousand deaths have occured in Europe
+    
+    2.4 INSIGHT - In comparision, the countries most affected in pure numbers like US, India and Brazil are not even in top 25 here.
+    
+    2.5 INSIGHT - So inspite of high density of population in US and most asian countries, they managed to largely control deaths, maybe due to well executed social-distancing or early adoption of vaccines.
+    
+    Further, It would be good to study the effect of vaccines and social-distancing in these countries.
+
+<br>
+
+3. **MORTALITY RATE** - (total deaths/total cases) - fig 5.6 and 5.7
+
+    3.1 Many african countries fall in the top segment of high mortality rate
+    
+    3.2 As per the data, though african countries do not show high cases of covid-19, but once affected, they show a very high death rate.
+    
+    3.3 This may be late availability and/or adoption of vaccines. Further study on this would show more light
+
+<br>
+
+## Bias
+
+<br>
+
+  1. This analysis is done on the dataset available with John Hopkins, so all the biases related to any data collection will exist, like:
+
+      1.1 **Measurement Bias** - Occuring from inaccurate collection of data or inaccurate methodologies used. We have to assume that the data is collected from authentic sources of each country.
+  
+      1.2 **Reporting Bias** - Occurs when certain outcomes are more likely to be reported than others. In our data, it is hughly likely that countries reported cases of recovery more than deaths, as it affected the respective governments' efficacy in conytrolling the pandemic. Also, we have to assume *all* cases are reported
+  
+  2. **Personal Bias** - 
+
+      2.1 Being of Indian origin and living in the United States, I naturally have a bit of a soft spot for these two countries. This could sometimes make me lean towards proving points for or against them more than others. However, it also means I have a better grasp of the data coming from these regions.
+
+      2.2 Aware of these potential biases, I made sure to create multiple metrics in my analysis. I didn’t just look at the number of cases and deaths but also considered population density by analyzing “Cases and Deaths per thousand” of the population.
+
+      2.3 I took it a step further by examining the data from the perspective of recovery and mortality rates. This helped me understand how effective each country was in treating the affected and the outcomes of their measures. By doing this, I aimed to get a comprehensive view of the large populations in these two countries and the effectiveness of their strategies.
+
+In conclusion, by acknowledging my biases and implementing diverse metrics, I aimed to ensure a balanced and thorough analysis. This approach helped me see the bigger picture and draw more accurate insights.
+
+<br>
+<br>
+
+--------------- END OF DOCUMENT --------------
+<br>
+<br>
+<br>
+<br>
+<br>
+
